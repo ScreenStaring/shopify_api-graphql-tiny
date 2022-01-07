@@ -48,6 +48,10 @@ GQL
 p result.dig("data", "customerUpdate", "userErrors")
 ```
 
+## Testing
+
+`cp env.template .env` and fill-in `.env` with the missing values. This requires a Shopify store.
+
 ## See Also
 
 - [Shopify Dev Tools](https://github.com/ScreenStaring/shopify-dev-tools) - Command-line program to assist with the development and/or maintenance of Shopify apps and stores

@@ -23,7 +23,8 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   spec.add_dependency "shopify_api_retry", "~> 0.2"
-  spec.add_development_dependency "bundler", "~> 1.17"
+  spec.add_development_dependency "webmock", "~> 3.0"
+  spec.add_development_dependency "bundler"
   spec.add_development_dependency "rake", "~> 10.0"
   spec.add_development_dependency "rspec", "~> 3.0"
 end

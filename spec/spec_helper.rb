@@ -1,5 +1,7 @@
 require "bundler/setup"
 require "shopify_api/graphql/tiny"
+require "webmock/rspec"
+require "dotenv/load" unless ENV["CI"]
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure

@@ -35,20 +35,21 @@ module ShopifyAPI
       QUERY_COST_HEADER = "X-GraphQL-Cost-Include-Fields"
       DEFAULT_RETRY_OPTIONS = { ConnectionError => { :wait => 3, :tries => 20 }, HTTPError => { :wait => 3, :tries => 20 } }
       DEFAULT_HEADERS = { "Content-Type" => "application/json" }.freeze
-      ENDPOINT = "https://%s/admin/api/%s/graphql.json"
+      # Note that we omit the "/" after API for the case where there's no version.
+      ENDPOINT = "https://%s/admin/api%s/graphql.json"
 
-      def initialize(host, token, options = nil)
-        raise ArgumentError, "host required" unless host
+      def initialize(shop, token, options = nil)
+        raise ArgumentError, "shop required" unless shop
         raise ArgumentError, "token required" unless token
 
-        @domain = shopify_domain(host)
+        @domain = shopify_domain(shop)
         @options = options || {}
 
         @headers = DEFAULT_HEADERS.dup
         @headers[ACCESS_TOKEN_HEADER] = token
-        @headers[QUERY_COST_HEADER] = "true" unless @options[:retry] == false
+        @headers[QUERY_COST_HEADER] = "true" if retry?
 
-        @endpoint = URI(sprintf(ENDPOINT, @domain, @options[:version] || ""))
+        @endpoint = URI(sprintf(ENDPOINT, @domain, !@options[:version].to_s.strip.empty? ? "/#{@options[:version]}" : ""))
       end
 
       def execute(q, variables = nil)
@@ -64,7 +65,7 @@ module ShopifyAPI
 
       def shopify_domain(host)
         domain = host.sub(%r{\Ahttps?://}i, "")
-        domain << SHOPIFY_DOMAIN unless domain.ends_with?(SHOPIFY_DOMAIN)
+        domain << SHOPIFY_DOMAIN unless domain.end_with?(SHOPIFY_DOMAIN)
         domain
       end
 
@@ -89,14 +90,14 @@ module ShopifyAPI
           raise ConnectionError, "request to #@endpoint failed: #{e}"
         end
 
+        # TODO: Even if non-200 check if JSON. See: https://shopify.dev/api/admin-graphql
         prefix = "failed to execute query for #@domain: "
         raise HTTPError.new("#{prefix}#{response.body}", response.code) if response.code != "200"
 
         json = JSON.parse(response.body)
         return json unless json.include?("errors")
 
-        errors = json["errors"].map { |e| e["message"] }.to_sentence
-
+        errors = json["errors"].map { |e| e["message"] }.join(", ")
         if json.dig("errors", 0, "extensions", "code") == "THROTTLED"
           raise RateLimitError.new(errors, json) unless retry?
           return json
