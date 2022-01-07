@@ -2,6 +2,8 @@
 
 Lightweight, no-nonsense, Shopify GraphQL Admin API client with built-in retry.
 
+![CI](https://github.com/ScreenStaring/shopify_api-graphql-tiny/actions/workflows/ci.yml/badge.svg)
+
 ## Usage
 
 ```rb
@@ -47,6 +49,8 @@ GQL
 
 p result.dig("data", "customerUpdate", "userErrors")
 ```
+
+See [the docs](https://rdoc.info/gems/shopify_api-graphql-tiny) for complete documentation.
 
 ## Testing
 

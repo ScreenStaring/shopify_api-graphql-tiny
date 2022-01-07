@@ -39,8 +39,28 @@ module ShopifyAPI
       QUERY_COST_HEADER = "X-GraphQL-Cost-Include-Fields"
       DEFAULT_RETRY_OPTIONS = { ConnectionError => { :wait => 3, :tries => 20 }, HTTPError => { :wait => 3, :tries => 20 } }
       DEFAULT_HEADERS = { "Content-Type" => "application/json" }.freeze
-      # Note that we omit the "/" after API for the case where there's no version.
-      ENDPOINT = "https://%s/admin/api%s/graphql.json"
+      ENDPOINT = "https://%s/admin/api%s/graphql.json"       # Note that we omit the "/" after API for the case where there's no version.
+
+      ##
+      #
+      # Create a new GraphQL client.
+      #
+      # === Arguments
+      #
+      # [shop (String)] Shopify domain to make requests against
+      # [token (String)] Shopify Admin API GraphQL token
+      # [options (Hash)] Client options. Optional.
+      #
+      # === Options
+      #
+      # [:retry (Boolean|Hash)] +Hash+ can be retry config options. For the format see {ShopifyAPIRetry}[https://github.com/ScreenStaring/shopify_api_retry/#usage]. Defaults to +true+
+      # [:version (String)] Shopify API version to use. Defaults to the latest version.
+      # [:debug (Boolean)] Output the HTTP request/response to +STDERR+. Defaults to +false+.
+      #
+      # === Errors
+      #
+      # ArgumentError if no +shop+ or +token+ is provided.
+      #
 
       def initialize(shop, token, options = nil)
         raise ArgumentError, "shop required" unless shop
@@ -55,6 +75,26 @@ module ShopifyAPI
 
         @endpoint = URI(sprintf(ENDPOINT, @domain, !@options[:version].to_s.strip.empty? ? "/#{@options[:version]}" : ""))
       end
+
+      #
+      # Execute a GraphQL query or mutation.
+      #
+      # === Arguments
+      #
+      # [q (String)] Query or mutation to execute
+      # [variables (Hash)] Optional. Variable to pass to the query or mutation given by +q+
+      #
+      # === Errors
+      #
+      # ConnectionError, HTTPError, RateLimitError, GraphQLError
+      #
+      # * An HTTPError is raised of the response does not have 200 status code
+      # * A RateLimitError is raised if rate-limited and retries are disabled or if still rate-limited after the configured number of retry attempts
+      # * A GraphQLError is raised if the response contains an +errors+ property that is not a rate-limit error
+      #
+      # === Returns
+      #
+      # [Hash] The GraphQL response. Unmodified.
 
       def execute(q, variables = nil)
         config = retry? ? @options[:retry] || DEFAULT_RETRY_OPTIONS : {}
