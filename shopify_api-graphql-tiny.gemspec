@@ -6,7 +6,7 @@ require "shopify_api/graphql/tiny/version"
 Gem::Specification.new do |spec|
   spec.name          = "shopify_api-graphql-tiny"
   spec.version       = ShopifyAPI::GraphQL::Tiny::VERSION
-  spec.authors       = ["sshaw"]
+  spec.authors       = ["Skye Shaw"]
   spec.email         = ["skye.shaw@gmail.com"]
 
   spec.summary       = %q{Lightweight, no-nonsense, Shopify Admin API GraphQL client with built-in retry.}
@@ -25,6 +25,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency "shopify_api_retry", "~> 0.2"
   spec.add_development_dependency "webmock", "~> 3.0"
   spec.add_development_dependency "bundler"
-  spec.add_development_dependency "rake", "~> 10.0"
+  spec.add_development_dependency "rake", ">= 12.3.3"
   spec.add_development_dependency "rspec", "~> 3.0"
 end
