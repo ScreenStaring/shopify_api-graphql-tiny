@@ -7,9 +7,13 @@ require "shopify_api/graphql/tiny/version"
 
 module ShopifyAPI
   module GraphQL
+    ##
+    # Client to make Shopify GraphQL Admin API requests with built-in retries.
+    #
     class Tiny
       Error = Class.new(StandardError)
       ConnectionError = Class.new(Error)
+      GraphQLError = Class.new(Error)
 
       class HTTPError < Error
         attr_reader :code
@@ -103,7 +107,7 @@ module ShopifyAPI
           return json
         end
 
-        raise Error.new, prefix + errors
+        raise GraphQLError, prefix + errors
       end
     end
   end
