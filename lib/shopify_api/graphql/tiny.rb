@@ -154,8 +154,3 @@ module ShopifyAPI
 
   GQL = GraphQL
 end
-
-ShopifyAPIRetry.config.on [
-  ShopifyAPI::GraphQL::Tiny::ConnectionError,
-  ShopifyAPI::GraphQL::Tiny::HTTPError
-], :tries => 5, :wait => 5
