@@ -13,7 +13,17 @@ module ShopifyAPI
     class Tiny
       Error = Class.new(StandardError)
       ConnectionError = Class.new(Error)
-      GraphQLError = Class.new(Error)
+
+      class GraphQLError < Error
+        # Hash of failed GraphQL response
+        attr_reader :response
+
+        def initialize(message, response)
+          super(message)
+          @response = response
+        end
+      end
+
 
       class HTTPError < Error
         attr_reader :code
@@ -37,8 +47,14 @@ module ShopifyAPI
 
       ACCESS_TOKEN_HEADER = "X-Shopify-Access-Token"
       QUERY_COST_HEADER = "X-GraphQL-Cost-Include-Fields"
-      DEFAULT_RETRY_OPTIONS = { ConnectionError => { :wait => 3, :tries => 20 }, HTTPError => { :wait => 3, :tries => 20 } }
+
       DEFAULT_HEADERS = { "Content-Type" => "application/json" }.freeze
+      DEFAULT_RETRY_OPTIONS = {
+        ConnectionError => { :wait => 3, :tries => 20 },
+        GraphQLError => { :wait => 3, :tries => 20 },
+        HTTPError => { :wait => 3, :tries => 20 }
+      }
+
       ENDPOINT = "https://%s/admin/api%s/graphql.json"       # Note that we omit the "/" after API for the case where there's no version.
 
       ##
@@ -147,7 +163,7 @@ module ShopifyAPI
           return json
         end
 
-        raise GraphQLError, prefix + errors
+        raise GraphQLError.new(prefix + errors, json)
       end
     end
   end
