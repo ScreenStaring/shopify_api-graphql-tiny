@@ -71,7 +71,7 @@ module ShopifyAPI
       #
       # [:retry (Boolean|Hash)] +Hash+ can be retry config options. For the format see {ShopifyAPIRetry}[https://github.com/ScreenStaring/shopify_api_retry/#usage]. Defaults to +true+
       # [:version (String)] Shopify API version to use. Defaults to the latest version.
-      # [:debug (Boolean)] Output the HTTP request/response to +STDERR+. Defaults to +false+.
+      # [:debug (Boolean|IO)] Output the HTTP request/response to +STDERR+ or to its value if it's an +IO+. Defaults to +false+.
       #
       # === Errors
       #
@@ -143,7 +143,12 @@ module ShopifyAPI
 
           request = Net::HTTP.new(@endpoint.host, @endpoint.port)
           request.use_ssl = true
-          request.set_debug_output($stderr) if @options[:debug]
+
+          if @options[:debug]
+            request.set_debug_output(
+              @options[:debug].is_a?(IO) ? @options[:debug] : $stderr
+            )
+          end
 
           response = request.start { |http| http.request(post) }
         rescue => e
