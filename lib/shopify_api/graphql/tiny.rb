@@ -43,6 +43,8 @@ module ShopifyAPI
         end
       end
 
+      USER_AGENT = "ShopifyAPI::GraphQL::Tiny v#{VERSION} (Ruby v#{RUBY_VERSION})"
+
       SHOPIFY_DOMAIN = ".myshopify.com"
 
       ACCESS_TOKEN_HEADER = "X-Shopify-Access-Token"
@@ -138,6 +140,7 @@ module ShopifyAPI
 
           post = Net::HTTP::Post.new(@endpoint.path)
           post.body = params.to_json
+          post["User-Agent"] = USER_AGENT
 
           @headers.each { |k,v| post[k] = v }
 
