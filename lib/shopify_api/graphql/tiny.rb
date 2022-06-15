@@ -24,6 +24,7 @@ module ShopifyAPI
         end
       end
 
+      RateLimitError = Class.new(GraphQLError)
 
       class HTTPError < Error
         attr_reader :code
@@ -31,15 +32,6 @@ module ShopifyAPI
         def initialize(message, code)
           super(message)
           @code = code
-        end
-      end
-
-      class RateLimitError < Error
-        attr_reader :response
-
-        def initialize(message, response)
-          super(message)
-          @response = response
         end
       end
 
