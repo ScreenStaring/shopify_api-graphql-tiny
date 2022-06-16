@@ -95,11 +95,11 @@ RSpec.describe ShopifyAPI::GraphQL::Tiny do
 
     it "retries failed requests by default" do
       expect(ShopifyAPIRetry::GraphQL).to receive(:retry).
-                                            with(
+                                            with({
                                               described_class::ConnectionError => { :wait => 3, :tries => 20 },
                                               described_class::HTTPError => { :wait => 3, :tries => 20 },
                                               described_class::GraphQLError => { :wait => 3, :tries => 20 }
-                                            ).
+                                            }).
                                             and_call_original
 
       result = @client.execute("query { shop { id } }")
@@ -114,7 +114,7 @@ RSpec.describe ShopifyAPI::GraphQL::Tiny do
       )
 
       expect(ShopifyAPIRetry::GraphQL).to receive(:retry).
-                                            with(described_class::ConnectionError => { :wait => 1, :tries => 5 }).
+                                            with({described_class::ConnectionError => { :wait => 1, :tries => 5 }}).
                                             and_call_original
 
       result = client.execute("query { shop { id } }")
