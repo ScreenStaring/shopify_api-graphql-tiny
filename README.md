@@ -2,7 +2,7 @@
 
 Lightweight, no-nonsense, Shopify GraphQL Admin API client with built-in retry.
 
-![CI](https://github.com/ScreenStaring/shopify_api-graphql-tiny/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/ScreenStaring/shopify_api-graphql-tiny/actions/workflows/ci.yml/badge.svg)](https://github.com/ScreenStaring/shopify_api-graphql-tiny/actions)
 
 ## Usage
 
