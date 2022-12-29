@@ -43,6 +43,8 @@ module ShopifyAPI
       QUERY_COST_HEADER = "X-GraphQL-Cost-Include-Fields"
 
       DEFAULT_HEADERS = { "Content-Type" => "application/json" }.freeze
+
+      # Retry rules to be used for all instances if no rules are specified via the +:retry+ option when creating an instance
       DEFAULT_RETRY_OPTIONS = {
         ConnectionError => { :wait => 3, :tries => 20 },
         GraphQLError => { :wait => 3, :tries => 20 },
@@ -96,19 +98,69 @@ module ShopifyAPI
       #
       # === Errors
       #
-      # ConnectionError, HTTPError, RateLimitError, GraphQLError
+      # ArgumentError, ConnectionError, HTTPError, RateLimitError, GraphQLError
       #
-      # * An HTTPError is raised of the response does not have 200 status code
-      # * A RateLimitError is raised if rate-limited and retries are disabled or if still rate-limited after the configured number of retry attempts
-      # * A GraphQLError is raised if the response contains an +errors+ property that is not a rate-limit error
+      # * An ShopifyAPI::GraphQL::Tiny::HTTPError is raised of the response does not have 200 status code
+      # * A ShopifyAPI::GraphQL::Tiny::RateLimitError is raised if rate-limited and retries are disabled or if still
+      #   rate-limited after the configured number of retry attempts
+      # * A ShopifyAPI::GraphQL::Tiny::GraphQLError is raised if the response contains an +errors+ property that is
+      #   not a rate-limit error
       #
       # === Returns
       #
       # [Hash] The GraphQL response. Unmodified.
 
       def execute(q, variables = nil)
+        raise ArgumentError, "query required" if q.nil? || q.to_s.strip.empty?
+
         config = retry? ? @options[:retry] || DEFAULT_RETRY_OPTIONS : {}
         ShopifyAPIRetry::GraphQL.retry(config) { post(q, variables) }
+      end
+
+      ##
+      # Create a pager to execute a paginated query:
+      #
+      #  pager = gql.paginate  # This is the same as gql.paginate(:after)
+      #  pager.execute(query, :id => id) do |page|
+      #    page.dig("data", "product", "title")
+      #  end
+      #
+      # The block is called for each page.
+      #
+      # Using pagination requires you to include the
+      # {PageInfo}[https://shopify.dev/api/admin-graphql/2022-10/objects/PageInfo]
+      # object in your queries and wrap them in a function that accepts a page/cursor argument.
+      # See the README for more information.
+      #
+      # === Arguments
+      #
+      # [direction (Symbol)] The direction to paginate, either +:after+ or +:before+. Optional, defaults to +:after:+
+      # [options (Hash)] Pagination options. Optional.
+      #
+      # === Options
+      #
+      # [:after (Array|Proc)] The location of {PageInfo}[https://shopify.dev/api/admin-graphql/2022-10/objects/PageInfo]
+      #                       block.
+      #
+      #                       An +Array+ will be passed directly to <code>Hash#dig</code>. A +TypeError+ resulting
+      #                       from the +#dig+ call will be raised as an +ArgumentError+.
+      #
+      #                       The <code>"data"</code> and <code>"pageInfo"</code> keys are automatically added if not provided.
+      #
+      #                       A +Proc+ must accept the GraphQL response +Hash+ as its argument and must return the
+      #                       +pageInfo+ block to use for pagination.
+      #
+      # [:before (Array|Proc)] See the +:after+ option
+      # [:variable (String)] Name of the GraphQL variable to use as the "page" argument.
+      #                      Defaults to <code>"before"</code> or <code>"after"</code>, depending on the pagination
+      #                      direction.
+      #
+      # === Errors
+      #
+      # ArgumentError
+
+      def paginate(*options)
+        Pager.new(self, options)
       end
 
       private
@@ -164,6 +216,147 @@ module ShopifyAPI
         end
 
         raise GraphQLError.new(prefix + errors, json)
+      end
+    end
+
+    class Pager  # :nodoc:
+      NEXT_PAGE_KEYS = {
+        :before => %w[hasPreviousPage startCursor].freeze,
+        :after  => %w[hasNextPage endCursor].freeze
+      }.freeze
+
+      def initialize(gql, *options)
+        @gql = gql
+        @options = normalize_options(options)
+      end
+
+      def execute(q, variables = nil)
+        unless pagination_variable_exists?(q)
+          raise ArgumentError, "query does not contain the pagination variable '#{@options[:variable]}'"
+        end
+
+        variables ||= {}
+        pagination_finder = @options[@options[:direction]]
+
+        loop do
+          page = @gql.execute(q, variables)
+
+          yield page
+
+          cursor = pagination_finder[page]
+          break unless cursor
+
+          next_page_variables = variables.dup
+          next_page_variables[@options[:variable]] = cursor
+          #break unless next_page_variables != variables
+
+          variables = next_page_variables
+        end
+      end
+
+      private
+
+      def normalize_options(options)
+        normalized = {}
+
+        options.flatten!
+        options.each do |option|
+          case option
+          when Hash
+            normalized.merge!(normalize_hash_option(option))
+          when *NEXT_PAGE_KEYS.keys
+            normalized[:direction] = option
+          else
+            raise ArgumentError, "invalid pagination option #{option}"
+          end
+        end
+
+        normalized[:direction] ||= :after
+        normalized[normalized[:direction]] ||= method(:default_pagination_finder)
+
+        normalized[:variable] ||= normalized[:direction].to_s
+        normalized[:variable] = normalized[:variable].sub(%r{\A\$}, "")
+
+        normalized
+      end
+
+      def normalize_hash_option(option)
+        normalized = option.dup
+
+        NEXT_PAGE_KEYS.each do |key, _|
+          next unless option.include?(key)
+
+          normalized[:direction] = key
+
+          case option[key]
+          when Proc
+            normalized[key] = ->(data) { extract_cursor(option[key][data]) }
+          when Array
+            path = pagination_path(option[key])
+            normalized[key] = ->(data) do
+              begin
+                extract_cursor(data.dig(*path))
+              rescue TypeError => e
+                # Use original path in error as not to confuse
+                raise ArgumentError, "invalid pagination path #{option[key]}: #{e}"
+              end
+            end
+          else
+            raise ArgumentError, "invalid pagination locator #{option[key]}"
+          end
+        end
+
+        normalized
+      end
+
+      def pagination_path(user_path)
+        path = user_path.dup
+
+        # No need for this, we check for this key ourselves
+        path.pop if path[-1] == "pageInfo"
+
+        # Must always include this (sigh)
+        path.unshift("data") if path[0] != "data"
+
+        path
+      end
+
+      def pagination_variable_exists?(query)
+        name = Regexp.quote(@options[:variable])
+        query.match?(%r{\$#{name}\s*:})
+      end
+
+      def extract_cursor(data)
+        return unless data.is_a?(Hash)
+
+        has_next, next_cursor = NEXT_PAGE_KEYS[@options[:direction]]
+
+        pi = data["pageInfo"]
+        return unless pi && pi[has_next]
+
+        pi[next_cursor]
+      end
+
+      def default_pagination_finder(data)
+        cursor = nil
+
+        case data
+        when Hash
+          cursor = extract_cursor(data)
+          return cursor if cursor
+
+          data.values.each do |v|
+            cursor = default_pagination_finder(v)
+            break if cursor
+          end
+        when Array
+          data.each do |v|
+            cursor = default_pagination_finder(v)
+            break if cursor
+          end
+        end
+
+        cursor
       end
     end
   end
