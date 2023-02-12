@@ -9,7 +9,7 @@ Gem::Specification.new do |spec|
   spec.authors       = ["Skye Shaw"]
   spec.email         = ["skye.shaw@gmail.com"]
 
-  spec.summary       = %q{Lightweight, no-nonsense, Shopify Admin API GraphQL client with built-in retry.}
+  spec.summary       = %q{Lightweight, no-nonsense, Shopify GraphQL Admin API client with built-in pagination and retry}
   spec.homepage      = "https://github.com/ScreenStaring/shopify_api-graphql-tiny"
   spec.license       = "MIT"
 
@@ -21,6 +21,12 @@ Gem::Specification.new do |spec|
   spec.bindir        = "exe"
   spec.executables   = spec.files.grep(%r{^exe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
+  spec.metadata = {
+    "bug_tracker_uri"   => "https://github.com/ScreenStaring/shopify_api-graphql-tiny/issues",
+    "changelog_uri"     => "https://github.com/ScreenStaring/shopify_api-graphql-tiny/blob/master/Changes",
+    "documentation_uri" => "https://rubydoc.info/gems/shopify_api-graphql-tiny",
+    "source_code_uri"   => "https://github.com/ScreenStaring/shopify_api-graphql-tiny",
+  }
 
   spec.add_dependency "shopify_api_retry", "~> 0.2"
   spec.add_development_dependency "webmock", "~> 3.0"

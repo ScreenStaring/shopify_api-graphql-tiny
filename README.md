@@ -166,10 +166,10 @@ in the GraphQL response. If necessary you can specify an explicit location for t
 
 ```rb
 pager = gql.paginate(:after => %w[some path to it])
-pager.execute(query) { }
+pager.execute(query) { |page| }
 
 pager = gql.paginate(:after => ->(data) { data.dig("some", "path", "to", "it") })
-pager.execute(query) { }
+pager.execute(query) { |page| }
 ```
 
 The `"data"` and `"pageInfo"` keys are automatically added if not provided.
