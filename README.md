@@ -4,6 +4,26 @@ Lightweight, no-nonsense, Shopify GraphQL Admin API client with built-in paginat
 
 [![CI](https://github.com/ScreenStaring/shopify_api-graphql-tiny/actions/workflows/ci.yml/badge.svg)](https://github.com/ScreenStaring/shopify_api-graphql-tiny/actions)
 
+## Installation
+
+Add this line to your application's `Gemfile`:
+
+```ruby
+gem "shopify_api-graphql-tiny"
+```
+
+And then execute:
+
+```sh
+bundle
+```
+
+Or install it yourself as:
+
+```sh
+gem install shopify_api-graphql-tiny
+```
+
 ## Usage
 
 ```rb
