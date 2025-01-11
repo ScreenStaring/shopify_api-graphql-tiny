@@ -84,6 +84,8 @@ in your queries and wrap them in a function that accepts a page/cursor argument.
 The pager's `#execute` is like the non-paginated `#execute` method and accepts additional, non-pagination query arguments:
 
 ```rb
+gql = ShopifyAPI::GraphQL::Tiny.new("my-shop", token)
+pager = gql.paginate
 pager.execute(query, :foo => 123)
 ```
 
