@@ -97,8 +97,7 @@ RSpec.describe ShopifyAPI::GraphQL::Tiny do
       expect(ShopifyAPIRetry::GraphQL).to receive(:retry).
                                             with({
                                               described_class::ConnectionError => { :wait => 3, :tries => 20 },
-                                              described_class::HTTPError => { :wait => 3, :tries => 20 },
-                                              described_class::GraphQLError => { :wait => 3, :tries => 20 }
+                                              described_class::HTTPError => { :wait => 3, :tries => 20 }
                                             }).
                                             and_call_original
 

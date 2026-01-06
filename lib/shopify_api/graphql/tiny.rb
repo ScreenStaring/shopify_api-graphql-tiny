@@ -179,6 +179,17 @@ module ShopifyAPI
         domain
       end
 
+      def error_message(errors)
+        errors.map do |e|
+          message = e["message"]
+
+          path = e["path"]
+          message << sprintf(" at %s", path.join(".")) if path
+
+          message
+        end.join(", ")
+      end
+
       def post(query, variables = nil)
         begin
           # Newer versions of Ruby
@@ -213,13 +224,14 @@ module ShopifyAPI
         json = JSON.parse(response.body)
         return json unless json.include?("errors")
 
-        errors = json["errors"].map { |e| e["message"] }.join(", ")
+        error = error_message(json["errors"])
+
         if json.dig("errors", 0, "extensions", "code") == "THROTTLED"
-          raise RateLimitError.new(errors, json) unless retry?
+          raise RateLimitError.new(error, json) unless retry?
           return json
         end
 
-        raise GraphQLError.new(prefix + errors, json)
+        raise GraphQLError.new(prefix + error, json)
       end
     end
 
