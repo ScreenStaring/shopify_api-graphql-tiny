@@ -1,6 +1,6 @@
 # ShopifyAPI::GraphQL::Tiny
 
-Lightweight, no-nonsense, Shopify GraphQL Admin API client with built-in pagination and retry.
+Lightweight, no-nonsense, Shopify GraphQL Admin API client with built-in pagination and retry
 
 [![CI](https://github.com/ScreenStaring/shopify_api-graphql-tiny/actions/workflows/ci.yml/badge.svg)](https://github.com/ScreenStaring/shopify_api-graphql-tiny/actions)
 
@@ -72,6 +72,69 @@ result = gql.execute(<<-GQL, :input => updates)
 GQL
 
 p result.dig("data", "customerUpdate", "userErrors")
+```
+
+### Automatically Retrying Failed Requests
+
+There are 2 types of retries: 1) request is rate-limited by Shopify 2) request fails due to an exception or non-200 HTTP response.
+
+When a request is rate-limited by Shopify retry occurs according to [Shopify's `throttleStatus`](https://shopify.dev/docs/api/admin-graphql/unstable#rate-limits)
+
+When a request fails due to an exception or non-200 HTTP status a retry will be attempted after an exponential backoff waiting period.
+This is controlled by `ShopifyAPI::GraphQL::Tiny::DEFAULT_BACKOFF_OPTIONS`. It contains:
+
+* `:base_delay` - `0.5`
+* `:jitter` - `true`
+* `:max_attempts` - `10`
+* `:max_delay` - `60`
+* `:multiplier` - `2.0`
+
+`:max_attempts` dictates how many retry attempts will be made **for all** types of retries.
+
+These can be overridden globally (by assigning to the constant) or per instance:
+
+```rb
+gql = ShopifyAPI::GraphQL::Tiny.new(shop, token, :max_attempts => 20, :max_delay => 90)
+```
+
+`ShopifyAPI::GraphQL::Tiny::DEFAULT_RETRY_ERRORS` determines what is retried. It contains and HTTP statuses codes, Shopify GraphQL errors codes, and exceptions.
+By default it contains:
+
+* `"5XX"` - Any HTTP 5XX status
+* `"INTERNAL_SERVER_ERROR"` - Shopify GraphQL error code
+* `"TIMEOUT"` - Shopify GraphQL error code
+* `EOFError`
+* `Errno::ECONNABORTED`
+* `Errno::ECONNREFUSED`
+* `Errno::ECONNRESET`
+* `Errno::EHOSTUNREACH`
+* `Errno::EINVAL`
+* `Errno::ENETUNREACH`
+* `Errno::ENOPROTOOPT`
+* `Errno::ENOTSOCK`
+* `Errno::EPIPE`
+* `Errno::ETIMEDOUT`
+* `Net::HTTPBadResponse`
+* `Net::HTTPHeaderSyntaxError`
+* `Net::ProtocolError`
+* `Net::ReadTimeout`
+* `OpenSSL::SSL::SSLError`
+* `SocketError`
+* `Timeout::Error`
+
+These can be overridden globally (by assigning to the constant) or per instance:
+
+```rb
+# Only retry on 2 errors
+gql = ShopifyAPI::GraphQL::Tiny.new(shop, token, :retry => [SystemCallError, "500"])
+```
+
+#### Disabling Automatic Retry
+
+To disable retries set the `:retry` option to `false`:
+
+```rb
+gql = ShopifyAPI::GraphQL::Tiny.new(shop, token, :retry => false)
 ```
 
 ### Pagination
@@ -196,19 +259,21 @@ pager.execute(query) { |page| }
 
 The `"data"` and `"pageInfo"` keys are automatically added if not provided.
 
-### Automatically Retrying Failed Requests
-
-See [the docs](https://rubydoc.info/gems/shopify_api-graphql-tiny) for more information.
-
 ## Testing
 
 `cp env.template .env` and fill-in `.env` with the missing values. This requires a Shopify store.
 
+To elicit a request that will be rate-limited by Shopify run following Rake task:
+
+```sh
+bundle exec rake rate_limit SHOPIFY_DOMAIN=your-domain SHOPIFY_TOKEN=your-token
+```
+
 ## See Also
 
 - [Shopify Dev Tools](https://github.com/ScreenStaring/shopify-dev-tools) - Command-line program to assist with the development and/or maintenance of Shopify apps and stores
-- [Shopify ID Export](https://github.com/ScreenStaring/shopify_id_export/) Dump Shopify product and variant IDs —along with other identifiers— to a CSV or JSON file
-- [ShopifyAPIRetry](https://github.com/ScreenStaring/shopify_api_retry) - Retry a ShopifyAPI request if rate-limited or other errors occur (REST and GraphQL APIs)
+- [Shopify ID Export](https://github.com/ScreenStaring/shopify_id_export/) - Dump Shopify product and variant IDs —along with other identifiers— to a CSV or JSON file
+- [`TinyGID`](https://github.com/sshaw/tiny_gid/) - Build Global ID (gid://) URI strings from scalar values
 
 ## License
 

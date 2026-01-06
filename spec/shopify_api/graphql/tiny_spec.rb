@@ -1,9 +1,35 @@
 require "json"
-require "shopify_api_retry"
 
 RSpec.describe ShopifyAPI::GraphQL::Tiny do
   def client(options = {})
     described_class.new(ENV.fetch("SHOPIFY_DOMAIN"), ENV.fetch("SHOPIFY_TOKEN"), options)
+  end
+
+  def stub_shopify
+    stub_request(:post, %r{\.myshopify\.com})
+  end
+
+  def graphql_error(code)
+    {
+      :errors => [
+        :message => "Looks like something went wrong on our end --AGAIN!",
+        :extensions => { :code => code }
+      ]
+    }
+  end
+
+  def graphql_rate_limited(cost, available, restore)
+    {
+      :cost => {
+        :requestedQueryCost => cost,
+        :actualQueryCost => nil,
+        :throttleStatus => {
+          :maximumAvailable => available,
+          :currentlyAvailable => 0,
+          :restoreRate => restore
+        }
+      }
+    }
   end
 
   before { WebMock.allow_net_connect! }
@@ -30,9 +56,9 @@ RSpec.describe ShopifyAPI::GraphQL::Tiny do
     end
 
     it "sets the endpoint for the given API version" do
-      client(:version => "2021-10").execute("query { shop { id } }")
+      client(:version => "2025-10").execute("query { shop { id } }")
 
-      endpoint = "https://%s/admin/api/2021-10/graphql.json" % ENV["SHOPIFY_DOMAIN"]
+      endpoint = "https://%s/admin/api/2025-10/graphql.json" % ENV["SHOPIFY_DOMAIN"]
       expect(WebMock).to have_requested(:post, endpoint)
     end
   end
@@ -69,71 +95,284 @@ RSpec.describe ShopifyAPI::GraphQL::Tiny do
     end
 
     it "executes mutations" do
+      id = ENV.fetch("SHOPIFY_CUSTOMER_ID")
+      value = Time.now.to_i.to_s
       input = {
+        :ownerId => "gid://shopify/Customer/#{id}",
         :namespace => "shopify_api_gql_tiny",
         :key => "testsuite",
-        :valueInput => {
-          :valueType => "STRING",
-          :value => Time.now.to_i.to_s
-        }
+        :type => "single_line_text_field",
+        :value => value
       }
 
-      result = client.execute(<<-GQL, :input => input)
-        mutation privateMetafieldUpsert($input: PrivateMetafieldInput!) {
-          privateMetafieldUpsert(input: $input) {
-            privateMetafield {
+      result = client.execute(<<-GQL, :metafields => [input])
+        mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
+          metafieldsSet(metafields: $metafields) {
+            metafields {
               key
               namespace
+              value
             }
           }
         }
       GQL
 
-      data = result.dig("data", "privateMetafieldUpsert", "privateMetafield")
-      expect(data).to eq("key" => "testsuite", "namespace" => "shopify_api_gql_tiny")
+      data = result.dig("data", "metafieldsSet", "metafields", 0)
+      expect(data).to eq("key" => "testsuite", "namespace" => "shopify_api_gql_tiny", "value" => value)
     end
 
-    it "retries failed requests by default" do
-      expect(ShopifyAPIRetry::GraphQL).to receive(:retry).
-                                            with({
-                                              described_class::ConnectionError => { :wait => 3, :tries => 20 },
-                                              described_class::HTTPError => { :wait => 3, :tries => 20 }
-                                            }).
-                                            and_call_original
+    it "retries only user-specified errors" do
+      stub_shopify.
+        to_return(:status => 404, :body => "Don't retry this at home!").
+        to_raise(Timeout::Error.new).
+        to_return(:body => graphql_error("TIMEOUT").to_json).
+        to_return(:status => 500, :body => "Not retrying this!")
 
-      result = client.execute("query { shop { id } }")
-      expect(result.dig("data", "shop", "id")).to be_a(String)
+      start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      expect {
+        client(:jitter => false, :retry => ["4XX", Timeout::Error, "TIMEOUT"]).execute("query { shop { id } }")
+      }.to raise_error(described_class::HTTPError, /Not retrying this!/)
+
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - start).to be_within(0.15).of(3.5)
     end
 
-    it "retries failed requests using the user provided options" do
-      client = described_class.new(
-        ENV["SHOPIFY_DOMAIN"],
-        ENV["SHOPIFY_TOKEN"],
-        :retry => { described_class::ConnectionError => { :wait => 1, :tries => 5 } }
-      )
+    context "given a response with non-successful HTTP status code" do
+      it "retries using an exponential backoff" do
+        stub_shopify.to_return(
+          { :status => 500, :body => "Internal Server Error" },
+          { :status => 502, :body => "Bad Gateway" },
+          { :status => 500, :body => "Internal Server Error" },
+          { :status => 200, :body => {:data => { :shop => { :id => "gid://shopify/Shop/123" }}}.to_json, :headers => { :content_type => "application/json" } }
+        )
 
-      expect(ShopifyAPIRetry::GraphQL).to receive(:retry).
-                                            with({described_class::ConnectionError => { :wait => 1, :tries => 5 }}).
-                                            and_call_original
+        start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-      result = client.execute("query { shop { id } }")
-      expect(result.dig("data", "shop", "id")).to be_a(String)
+        # Since we're measuring delay don't use jitter
+        result = client(:jitter => false).execute("query { shop { id } }")
+
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - start).to be_within(0.15).of(3.5)
+        expect(result.dig("data", "shop", "id")).to eq "gid://shopify/Shop/123"
+      end
+
+      it "raises an HTTPError when the max attempts are exhausted" do
+        stub_shopify.to_return(
+          { :status => 500, :body => "Internal Server Error" },
+          { :status => 502, :body => "Bad Gateway" },
+          { :status => 500, :body => "Internal Server Error" },
+          { :status => 503, :body => "Service Unavailable" }
+        )
+
+        expect {
+          client(:max_attempts => 4).execute("query { shop { id } }")
+        }.to raise_error(described_class::HTTPError, "failed to execute query for #{ENV["SHOPIFY_DOMAIN"]}: Service Unavailable")
+      end
     end
 
-    it "raises a RateLimitError when retry is disabled" do
-      stub_request(:post, %r{\.myshopify\.com}).to_return(
-        :status => 200,
-        :headers => { "Content-Type" => "application/json" },
-        :body => { :errors => [ :extensions => { :code => "THROTTLED" } ] }.to_json
-      )
+    context "given a request that raises an exception" do
+      it "retries using an exponential backoff" do
+        stub_shopify.
+          to_raise(Timeout::Error.new("error 1")).
+          to_raise(Net::ReadTimeout.new("error 2")).
+          to_raise(Timeout::Error.new("error 3")).
+          to_return(
+            :status => 200,
+            :body => {:data => { :shop => { :id => "gid://shopify/Shop/123" }}}.to_json,
+            :headers => { :content_type => "application/json" }
+          )
 
-      expect { client(:retry => false).execute("query { shop { id } }") }.to raise_error(described_class::RateLimitError)
+        start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+        # Since we're measuring delay don't use jitter
+        result = client(:jitter => false).execute("query { shop { id } }")
+
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - start).to be_within(0.15).of(3.5)
+        expect(result.dig("data", "shop", "id")).to eq "gid://shopify/Shop/123"
+      end
+
+      it "raises a ConnectionError when the max attempts are exhausted" do
+        stub_shopify.
+          to_raise(Timeout::Error.new("error 1")).
+          to_raise(Net::ReadTimeout.new("error 2")).
+          to_raise(Timeout::Error.new("error 3")).
+          to_raise(Net::ReadTimeout.new("error 4"))
+
+        expect {
+          client(:max_attempts => 4).execute("query { shop { id } }")
+        }.to raise_error(described_class::ConnectionError, %|failed to execute query for #{ENV["SHOPIFY_DOMAIN"]}: Net::ReadTimeout with "error 4"|)
+      end
     end
 
-    it "raises an HTTPError when the response does not have a 200 status" do
-      stub_request(:post, %r{\.myshopify\.com}).to_return(:status => 503, :body => "NGINX blah blah")
+    context "given a response with a retryable GraphQL error code" do
+      it "retries using an exponential backoff" do
+        stub_shopify.to_return(
+          {
+            :status => 200,
+            :body => graphql_error("INTERNAL_SERVER_ERROR").to_json,
+            :headers => { "Content-Type" => "application/json" }
+          },
+          {
+            :status => 200,
+            :body => graphql_error("INTERNAL_SERVER_ERROR").to_json,
+            :headers => { "Content-Type" => "application/json" }
+          },
+          {
+            :status => 200,
+            :body => graphql_error("TIMEOUT").to_json,
+            :headers => { "Content-Type" => "application/json" }
+          },
+          {
+            :status => 200,
+            :body => {:data => { :shop => { :id => "gid://shopify/Shop/123" }}}.to_json,
+            :headers => { :content_type => "application/json" }
+          }
+        )
 
-      expect { client(:retry => false).execute("query { shop { id } }") }.to raise_error(described_class::HTTPError)
+        start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+        # Since we're measuring delay don't use jitter
+        result = client(:jitter => false).execute("query { shop { id } }")
+
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - start).to be_within(0.15).of(3.5)
+        expect(result.dig("data", "shop", "id")).to eq "gid://shopify/Shop/123"
+      end
+
+      it "raises a GraphQLError when the max attempts are exhausted" do
+        stub_shopify.to_return(
+          {
+            :status => 200,
+            :body => graphql_error("INTERNAL_SERVER_ERROR").to_json,
+            :headers => { "Content-Type" => "application/json" }
+          },
+          {
+            :status => 200,
+            :body => graphql_error("INTERNAL_SERVER_ERROR").to_json,
+            :headers => { "Content-Type" => "application/json" }
+          },
+          {
+            :status => 200,
+            :body => graphql_error("TIMEOUT").to_json,
+            :headers => { "Content-Type" => "application/json" }
+          },
+          {
+            :status => 200,
+            :body => graphql_error("INTERNAL_SERVER_ERROR").to_json,
+            :headers => { "Content-Type" => "application/json" }
+          },
+        )
+
+        expect {
+          client(:max_attempts => 4).execute("query { shop { id } }")
+        }.to raise_error(described_class::GraphQLError, "failed to execute query for #{ENV["SHOPIFY_DOMAIN"]}: Looks like something went wrong on our end --AGAIN!")
+      end
+    end
+
+    context "given a response with a non-retryable GraphQL error code" do
+      before do
+        stub_shopify.to_return(
+          :status => 200,
+          :body => graphql_error("ACCESS_DENIED").to_json,
+          :headers => { "Content-Type" => "application/json" }
+        )
+      end
+
+      it "raises a GraphQLError" do
+        expect {
+          client.execute("query { shop { id } }")
+        }.to raise_error(described_class::GraphQLError, "failed to execute query for #{ENV["SHOPIFY_DOMAIN"]}: Looks like something went wrong on our end --AGAIN!")
+      end
+
+      it "does not retry" do
+        start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+        expect {
+          # Would take 60 seconds if we retried
+          client(:max_attempts => 10, :jitter => false).execute("query { shop { id } }")
+        }.to raise_error(described_class::GraphQLError)
+
+        # Account for network delays, etc...
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - start).to be < 3
+      end
+    end
+
+    context "given a response that's rate limited" do
+      before do
+        stub_shopify.to_return(
+          {
+            :status => 200,
+            # Wait for 1 second to retry
+            :body => graphql_error("THROTTLED").merge!(:extensions => graphql_rate_limited(100, 1000, 100)).to_json,
+            :headers => { "Content-Type" => "application/json" }
+          },
+          {
+            :status => 200,
+            # Wait for 2 seconds to retry
+            :body => graphql_error("THROTTLED").merge!(:extensions => graphql_rate_limited(200, 1000, 100)).to_json,
+            :headers => { "Content-Type" => "application/json" }
+          },
+          {
+            :status => 200,
+            # Wait for 1 second to retry
+            :body => graphql_error("THROTTLED").merge!(:extensions => graphql_rate_limited(100, 1000, 100)).to_json,
+            :headers => { "Content-Type" => "application/json" }
+          },
+          {
+            :status => 200,
+            :body => {:data => { :shop => { :id => "gid://shopify/Shop/123" }}}.to_json,
+            :headers => { :content_type => "application/json" }
+          }
+        )
+      end
+
+      it "retries using an exponential backoff" do
+        start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+        result = client.execute("query { shop { id } }")
+
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - start).to be_within(0.15).of(4)
+        expect(result.dig("data", "shop", "id")).to eq "gid://shopify/Shop/123"
+      end
+
+      it "raises a RateLimitError when the max attempts are exhausted" do
+        expect {
+          client(:max_attempts => 3).execute("query { shop { id } }")
+        }.to raise_error(described_class::RateLimitError)
+      end
+    end
+
+    context "given a response with a mix of exceptions, HTTP errors, and throttling" do
+      before do
+        @request = stub_shopify.
+          to_return(
+            :status => 200,
+            :body => graphql_error("INTERNAL_SERVER_ERROR").to_json,
+            :headers => { "Content-Type" => "application/json" }
+          ).
+          to_raise(Net::ReadTimeout.new("error 2")).
+          to_return(:status => 503, :body => "Service Unavailable")
+      end
+
+      it "retries using an exponential backoff" do
+        @request.to_return(
+          :status => 200,
+          :body => {:data => { :shop => { :id => "gid://shopify/Shop/123" }}}.to_json,
+          :headers => { :content_type => "application/json" }
+        )
+
+        start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+        # Since we're measuring delay don't use jitter
+        result = client(:jitter => false).execute("query { shop { id } }")
+
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - start).to be_within(0.15).of(3.5)
+        expect(result.dig("data", "shop", "id")).to eq "gid://shopify/Shop/123"
+      end
+
+      it "raises an exception based on the last error encountered" do
+        expect {
+          client(:max_attempts => 3).execute("query { shop { id } }")
+        }.to raise_error(described_class::HTTPError)
+      end
     end
 
     it "includes the Shopify GraphQL cost HTTP header" do

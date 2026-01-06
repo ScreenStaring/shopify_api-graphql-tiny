@@ -28,7 +28,7 @@ Gem::Specification.new do |spec|
     "source_code_uri"   => "https://github.com/ScreenStaring/shopify_api-graphql-tiny",
   }
 
-  spec.add_dependency "shopify_api_retry", "~> 0.2"
+  spec.add_dependency "net_http_timeout_errors"
   spec.add_development_dependency "webmock", "~> 3.0"
   spec.add_development_dependency "bundler"
   spec.add_development_dependency "rake", ">= 12.3.3"

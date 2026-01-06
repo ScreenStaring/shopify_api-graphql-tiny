@@ -2,17 +2,21 @@
 require "json"
 require "net/http"
 
-require "shopify_api_retry"
+require "net_http_timeout_errors"
 require "shopify_api/graphql/tiny/version"
 
 module ShopifyAPI
   module GraphQL
     ##
-    # Client to make Shopify GraphQL Admin API requests with built-in retries.
+    # Lightweight, no-nonsense, Shopify GraphQL Admin API client with built-in pagination and retry
     #
     class Tiny
       Error = Class.new(StandardError)
       ConnectionError = Class.new(Error)
+
+      ERROR_CODE_THROTTLED = "THROTTLED"
+      ERROR_CODE_TIMEOUT = "TIMEOUT"
+      ERROR_CODE_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
       class GraphQLError < Error
         # Hash of failed GraphQL response
@@ -44,18 +48,26 @@ module ShopifyAPI
 
       DEFAULT_HEADERS = { "Content-Type" => "application/json" }.freeze
 
-      # Retry rules to be used for all instances if no rules are specified via the +:retry+ option when creating an instance
-      DEFAULT_RETRY_OPTIONS = {
-        ConnectionError => { :wait => 3, :tries => 20 },
-        GraphQLError => { :wait => 3, :tries => 20 },
-        HTTPError => { :wait => 3, :tries => 20 }
+      DEFAULT_BACKOFF_OPTIONS = {
+        :base_delay => 0.5,
+        :jitter => true,
+        :max_attempts => 10,
+        :max_delay => 60,
+        :multiplier => 2.0
       }
+
+      DEFAULT_RETRY_ERRORS = [
+        "5XX",
+        ERROR_CODE_SERVER_ERROR,
+        ERROR_CODE_TIMEOUT,
+        *NetHttpTimeoutErrors.all
+      ]
 
       ENDPOINT = "https://%s/admin/api%s/graphql.json"       # Note that we omit the "/" after API for the case where there's no version.
 
       ##
       #
-      # Create a new GraphQL client.
+      # Create a new GraphQL client
       #
       # === Arguments
       #
@@ -65,8 +77,12 @@ module ShopifyAPI
       #
       # === Options
       #
-      # [:retry (Boolean|Hash)] +Hash+ can be retry config options. For the format see {ShopifyAPIRetry}[https://github.com/ScreenStaring/shopify_api_retry/#usage]. Defaults to +true+
+      # [:retry (Boolean|Array)] If +false+ disable retries or an +Array+ of errors to retry. Can be HTTP status codes, GraphQL errors, or exception classes.
       # [:version (String)] Shopify API version to use. Defaults to the latest version.
+      # [:max_attempts (Integer)] Maximum number of retry attempts across all errors. Defaults to +10+
+      # [:base_delay (Float)] Exponential backoff base delay. Defaults to +0.5+
+      # [:jitter (Boolean)] Exponential backoff jitter (random delay added to backoff). Defaults to +true+
+      # [:multiplier (Float)] Exponential backoff multiplier. Defaults to +2.0+
       # [:debug (Boolean|IO)] Output the HTTP request/response to +STDERR+ or to its value if it's an +IO+. Defaults to +false+.
       #
       # === Errors
@@ -83,17 +99,27 @@ module ShopifyAPI
 
         @headers = DEFAULT_HEADERS.dup
         @headers[ACCESS_TOKEN_HEADER] = token
-        @headers[QUERY_COST_HEADER] = "true" if retry?
+        @headers[QUERY_COST_HEADER] = "true"
 
         @endpoint = URI(sprintf(ENDPOINT, @domain, !@options[:version].to_s.strip.empty? ? "/#{@options[:version]}" : ""))
+        @backoff_options = DEFAULT_BACKOFF_OPTIONS.merge(@options.slice(*DEFAULT_BACKOFF_OPTIONS.keys))
 
-        if @options[:retry].is_a?(Hash)
-          warn "DEPRECATION WARNING from #{self.class}: specifying retry options as a Hash via the :retry option is deprecated and will be removed in v1.0"
+        if @options[:debug]
+          @debug = @options[:debug].is_a?(IO) ? @options[:debug] : $stderr
+        end
+
+        case @options[:retry]
+        when false
+          @retryable = []
+        when Array
+          @retryable = @options[:retry]
+        else
+          @retryable = DEFAULT_RETRY_ERRORS
         end
       end
 
       #
-      # Execute a GraphQL query or mutation.
+      # Execute a GraphQL query or mutation
       #
       # === Arguments
       #
@@ -103,6 +129,8 @@ module ShopifyAPI
       # === Errors
       #
       # ArgumentError, ConnectionError, HTTPError, RateLimitError, GraphQLError
+      #
+      # Outside of ArgumentError these are raised after exhausing the configured retry.
       #
       # * An ShopifyAPI::GraphQL::Tiny::HTTPError is raised of the response does not have 200 status code
       # * A ShopifyAPI::GraphQL::Tiny::RateLimitError is raised if rate-limited and retries are disabled or if still
@@ -117,8 +145,9 @@ module ShopifyAPI
       def execute(q, variables = nil)
         raise ArgumentError, "query required" if q.nil? || q.to_s.strip.empty?
 
-        config = retry? ? @options[:retry] || DEFAULT_RETRY_OPTIONS : {}
-        ShopifyAPIRetry::GraphQL.retry(config) { post(q, variables) }
+        @request_attempts = 0
+
+        make_request(q, variables)
       end
 
       ##
@@ -169,14 +198,113 @@ module ShopifyAPI
 
       private
 
-      def retry?
-        @options[:retry] != false
+      def make_request(query, variables = nil)
+        response = nil
+        exceptions = @retryable.select { |target| target.is_a?(Class) }
+
+        begin
+          @request_attempts += 1
+          response = post(query, variables)
+        rescue *exceptions => e
+          retry if wait_to_retry
+          raise ConnectionError.new("failed to execute query for #@domain: #{e.message}")
+        end
+
+        if response.code != "200"
+          return make_request(query, variables) if handle_http_error(response.code)
+          raise HTTPError.new("failed to execute query for #@domain: #{response.body}", response.code)
+        end
+
+        json = parse_json(response.body)
+        return json unless json.include?("errors")
+
+        return make_request(query, variables) if handle_graphql_error(json)
+
+        message = error_message(json["errors"])
+        raise GraphQLError.new("failed to execute query for #@domain: #{message}", json)
+      end
+
+      def post(query, variables = nil)
+        # Newer versions of Ruby:
+        # response = Net::HTTP.post(@endpoint, query, @headers)
+        params = { :query => query }
+        params[:variables] = variables if variables
+
+        post = Net::HTTP::Post.new(@endpoint.path)
+        post.body = params.to_json
+        post["User-Agent"] = USER_AGENT
+
+        @headers.each { |k,v| post[k] = v }
+
+        request = Net::HTTP.new(@endpoint.host, @endpoint.port)
+        request.use_ssl = true
+        request.set_debug_output(@debug) if @debug
+
+        request.start { |http| http.request(post) }
+      end
+
+      def handle_graphql_error(json)
+        errors = json["errors"]
+        codes = errors.map { |error| error.dig("extensions", "code") }
+
+        if codes.include?(ERROR_CODE_THROTTLED)
+          return true if wait_for_shopify_retry(json.dig("extensions", "cost"))
+
+          raise RateLimitError.new(error_message(errors), json)
+        end
+
+        return true if @retryable.any? { |error| codes.include?(error) } && wait_to_retry
+
+        false
+      end
+
+      def handle_http_error(status)
+        return false unless @retryable.include?(status) || @retryable.any? { |error| error.is_a?(String) && error.size == 3 && error.end_with?("XX") && error[0] == status[0] }
+
+        wait_to_retry
+      end
+
+      def wait_to_retry
+        return false unless request_attempts_remain?
+
+        backoff(@request_attempts)
+
+        true
+      end
+
+      def wait_for_shopify_retry(cost)
+        return false if cost.nil? || cost["actualQueryCost"] || !request_attempts_remain?
+
+        status = cost["throttleStatus"]
+        time = (cost["requestedQueryCost"] - status["currentlyAvailable"]) / status["restoreRate"]
+
+        debug("retrying rate-limited request (retry count: #@request_attempts, status: #{status}, sleep: #{time})")
+
+        sleep(time)
+
+        true
+      end
+
+      def backoff(attempts)
+        delay = @backoff_options[:base_delay] * (@backoff_options[:multiplier] ** (attempts - 1))
+        delay = [delay, @backoff_options[:max_delay]].min if @backoff_options[:max_delay]
+        delay = rand * delay if @backoff_options[:jitter]
+
+        debug("backoff sleeping for #{delay}")
+
+        sleep(delay)
       end
 
       def shopify_domain(host)
         domain = host.sub(%r{\Ahttps?://}i, "")
         domain << SHOPIFY_DOMAIN unless domain.end_with?(SHOPIFY_DOMAIN)
         domain
+      end
+
+      def parse_json(json)
+        JSON.parse(json)
+      rescue JSON::ParserError => e
+        raise Error, "failed to parse JSON response: #{e.message}"
       end
 
       def error_message(errors)
@@ -190,48 +318,14 @@ module ShopifyAPI
         end.join(", ")
       end
 
-      def post(query, variables = nil)
-        begin
-          # Newer versions of Ruby
-          # response = Net::HTTP.post(@endpoint, query, @headers)
-          params = { :query => query }
-          params[:variables] = variables if variables
+      def request_attempts_remain?
+        @request_attempts < @backoff_options[:max_attempts]
+      end
 
-          post = Net::HTTP::Post.new(@endpoint.path)
-          post.body = params.to_json
-          post["User-Agent"] = USER_AGENT
+      def debug(message)
+        return unless @debug
 
-          @headers.each { |k,v| post[k] = v }
-
-          request = Net::HTTP.new(@endpoint.host, @endpoint.port)
-          request.use_ssl = true
-
-          if @options[:debug]
-            request.set_debug_output(
-              @options[:debug].is_a?(IO) ? @options[:debug] : $stderr
-            )
-          end
-
-          response = request.start { |http| http.request(post) }
-        rescue => e
-          raise ConnectionError, "request to #@endpoint failed: #{e}"
-        end
-
-        # TODO: Even if non-200 check if JSON. See: https://shopify.dev/api/admin-graphql
-        prefix = "failed to execute query for #@domain: "
-        raise HTTPError.new("#{prefix}#{response.body}", response.code) if response.code != "200"
-
-        json = JSON.parse(response.body)
-        return json unless json.include?("errors")
-
-        error = error_message(json["errors"])
-
-        if json.dig("errors", 0, "extensions", "code") == "THROTTLED"
-          raise RateLimitError.new(error, json) unless retry?
-          return json
-        end
-
-        raise GraphQLError.new(prefix + error, json)
+        @debug.puts "#{self.class}: #{message}"
       end
     end
 
