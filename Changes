@@ -1,3 +1,12 @@
+2026-01-20  v1.0.0
+--------------------
+* Add support for exponential backoff and remove ShopifyAPIRetry
+* Support HTTP status and Shopify error codes as retry options
+
+2026-01-20  v0.2.0
+--------------------
+* Deprecate :retry with a Hash value
+
 2023-02-12  v0.1.1
 --------------------
 * Add pagination support
