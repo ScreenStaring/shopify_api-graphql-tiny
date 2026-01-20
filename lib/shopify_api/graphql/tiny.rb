@@ -86,6 +86,10 @@ module ShopifyAPI
         @headers[QUERY_COST_HEADER] = "true" if retry?
 
         @endpoint = URI(sprintf(ENDPOINT, @domain, !@options[:version].to_s.strip.empty? ? "/#{@options[:version]}" : ""))
+
+        if @options[:retry].is_a?(Hash)
+          warn "DEPRECATION WARNING from #{self.class}: specifying retry options as a Hash via the :retry option is deprecated and will be removed in v1.0"
+        end
       end
 
       #
