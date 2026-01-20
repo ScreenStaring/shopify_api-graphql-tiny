@@ -205,8 +205,8 @@ module ShopifyAPI
         begin
           @request_attempts += 1
           response = post(query, variables)
-        rescue *exceptions => e
-          retry if wait_to_retry
+        rescue => e
+          retry if exceptions.include?(e.class) && wait_to_retry
           raise ConnectionError.new("failed to execute query for #@domain: #{e.message}")
         end
 
