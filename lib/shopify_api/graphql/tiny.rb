@@ -99,7 +99,7 @@ module ShopifyAPI
 
         @headers = DEFAULT_HEADERS.dup
         @headers[ACCESS_TOKEN_HEADER] = token
-        @headers[QUERY_COST_HEADER] = "true"
+        @headers[QUERY_COST_HEADER] = "true" unless @options[:retry] == false
 
         @endpoint = URI(sprintf(ENDPOINT, @domain, !@options[:version].to_s.strip.empty? ? "/#{@options[:version]}" : ""))
         @backoff_options = DEFAULT_BACKOFF_OPTIONS.merge(@options.slice(*DEFAULT_BACKOFF_OPTIONS.keys))
