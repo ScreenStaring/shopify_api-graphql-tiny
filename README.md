@@ -268,7 +268,7 @@ The `"data"` and `"pageInfo"` keys are automatically added if not provided.
 
 ## Why Use This Instead of Shopify's API Client?
 
-- Easy to use
+- Easy-to-use
 - Built-in retry
 - Built-in pagination
 - Lightweight
