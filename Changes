@@ -1,3 +1,7 @@
+2026-01-24  v1.0.1
+--------------------
+* Add support for calling #paginate without a block
+
 2026-01-20  v1.0.0
 --------------------
 * Add support for exponential backoff and remove ShopifyAPIRetry
