@@ -158,7 +158,8 @@ module ShopifyAPI
       #    page.dig("data", "product", "title")
       #  end
       #
-      # The block is called for each page.
+      # The block is called for each page. If a block is not provided returns an instance of Enumerator::Lazy that will fetch the next
+      # page on each iteration.
       #
       # Using pagination requires you to include the
       # {PageInfo}[https://shopify.dev/api/admin-graphql/2022-10/objects/PageInfo]
@@ -188,9 +189,13 @@ module ShopifyAPI
       #                      Defaults to <code>"before"</code> or <code>"after"</code>, depending on the pagination
       #                      direction.
       #
+      # === Returns
+      #
+      # +nil+ or `Enumerator::Lazy` if no block was provided
+      #
       # === Errors
       #
-      # ArgumentError
+      # See #execute
 
       def paginate(*options)
         Pager.new(self, options)
