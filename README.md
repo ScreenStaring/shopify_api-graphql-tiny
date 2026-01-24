@@ -97,7 +97,7 @@ These can be overridden globally (by assigning to the constant) or per instance:
 gql = ShopifyAPI::GraphQL::Tiny.new(shop, token, :max_attempts => 20, :max_delay => 90)
 ```
 
-`ShopifyAPI::GraphQL::Tiny::DEFAULT_RETRY_ERRORS` determines what is retried. It contains and HTTP statuses codes, Shopify GraphQL errors codes, and exceptions.
+`ShopifyAPI::GraphQL::Tiny::DEFAULT_RETRY_ERRORS` determines what is retried. It contains HTTP status codes, Shopify GraphQL errors codes, and exception classes.
 By default it contains:
 
 * `"5XX"` - Any HTTP 5XX status
