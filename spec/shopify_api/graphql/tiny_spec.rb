@@ -456,6 +456,35 @@ RSpec.describe ShopifyAPI::GraphQL::Tiny do
       expect(positions).to eq positions.sort
     end
 
+    it "paginates using a lazy enumerator when no block is given" do
+      q = <<-GQL
+        query product($id: ID! $after: String) {
+          product(id: $id) {
+            variants(first:1 sortKey: POSITION after: $after ) {
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
+              edges {
+                node {
+                  position
+                }
+              }
+            }
+          }
+        }
+      GQL
+
+      enum = client.paginate.execute(q, :id => @id)
+      expect(enum).to be_a(Enumerator::Lazy)
+
+      positions = []
+      enum.each { |page| positions << page.dig(*position_node_at(0)).fetch("position") }
+
+      expect(positions.size).to be > 1, VARIANT_COUNT_ERROR
+      expect(positions).to eq positions.sort
+    end
+
     it "pages backward using a $before variable when :before pagination is specified" do
       q = <<-GQL
         query product($id: ID!) {

@@ -160,6 +160,13 @@ pager.execute(query, :foo => 123) do |page|
 end
 ```
 
+If a block is not given an `Enumerator::Lazy` instance is returned that will fetch the next page upon each iteration:
+
+```rb
+results = pager.execute(query, :foo => 123)
+results.each { |page| ... }
+```
+
 #### `after` Pagination
 
 To use `after` pagination, i.e., to paginate forward, your query must:

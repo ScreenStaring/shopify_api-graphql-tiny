@@ -348,19 +348,22 @@ module ShopifyAPI
         variables ||= {}
         pagination_finder = @options[@options[:direction]]
 
-        loop do
-          page = @gql.execute(q, variables)
+        enumerator = Enumerator.new do |y|
+          loop do
+            page = @gql.execute(q, variables)
+            y << page
 
-          yield page
+            cursor = pagination_finder[page]
+            break unless cursor
 
-          cursor = pagination_finder[page]
-          break unless cursor
+            variables[@options[:variable]] = cursor
+          end
+        end
 
-          next_page_variables = variables.dup
-          next_page_variables[@options[:variable]] = cursor
-          #break unless next_page_variables != variables
-
-          variables = next_page_variables
+        if block_given?
+          enumerator.each { |page| yield page }
+        else
+          enumerator.lazy
         end
       end
 
