@@ -266,6 +266,20 @@ pager.execute(query) { |page| }
 
 The `"data"` and `"pageInfo"` keys are automatically added if not provided.
 
+## Why Use This Instead of Shopify's API Client?
+
+- Easy to use
+- Built-in retry
+- Built-in pagination
+- Lightweight
+
+Overall, Shopify's API client is bloated trash that will give you development headaches and long-term maintenance nightmares.
+
+We used to use it, staring way back in 2015, but eventually had to pivot away from their Ruby libraries due to developer
+frustration and high maintenance cost (and don't get us started on the ShopifyApp gem!@#).
+
+For more information see: https://github.com/Shopify/shopify-api-ruby/issues/1181
+
 ## Testing
 
 `cp env.template .env` and fill-in `.env` with the missing values. This requires a Shopify store.
@@ -278,6 +292,7 @@ bundle exec rake rate_limit SHOPIFY_DOMAIN=your-domain SHOPIFY_TOKEN=your-token
 
 ## See Also
 
+- [`ShopifyAPI::GraphQL::Request`](https://github.com/ScreenStaring/shopify_api-graphql-request) - A higher-level wrapper around this class with improved exception handling and `:snake_case` hash key conversion
 - [Shopify Dev Tools](https://github.com/ScreenStaring/shopify-dev-tools) - Command-line program to assist with the development and/or maintenance of Shopify apps and stores
 - [Shopify ID Export](https://github.com/ScreenStaring/shopify_id_export/) - Dump Shopify product and variant IDs —along with other identifiers— to a CSV or JSON file
 - [`TinyGID`](https://github.com/sshaw/tiny_gid/) - Build Global ID (gid://) URI strings from scalar values
