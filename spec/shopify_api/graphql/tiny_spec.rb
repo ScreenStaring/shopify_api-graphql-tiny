@@ -340,6 +340,100 @@ RSpec.describe ShopifyAPI::GraphQL::Tiny do
       end
     end
 
+    context "given a response that contains warnings" do
+      def products_with_warnings_query
+        <<-GQL
+          query {
+            products(first: 1 query:"metafields:foo") {
+              pageInfo {
+                hasNextPage
+              }
+              edges {
+                cursor
+                node {
+                  legacyResourceId
+                }
+              }
+            }
+          }
+        GQL
+      end
+
+      it "does not raise by default" do
+        result = nil
+
+        expect {
+          result = client.execute(products_with_warnings_query)
+        }.to_not raise_error
+
+        expect(result.dig("data", "products", "edges")).to be_a(Array)
+      end
+
+      it "raises a WarningError when :raise_on_warnings is true" do
+        expect {
+          client(:raise_on_warnings => true).execute(products_with_warnings_query)
+        }.to raise_error(
+          described_class::WarningError,
+          /\Aquery for .+ returned warnings: search metafields: /
+        )
+      end
+
+      it "raises a WarningError that is a GraphQLError exposing the response" do
+        expect {
+          client(:raise_on_warnings => true).execute(products_with_warnings_query)
+        }.to raise_error(described_class::GraphQLError) do |e|
+          expect(e.response.dig("extensions", "search", 0, "warnings")).to_not be_empty
+        end
+      end
+
+      it "joins multiple warnings" do
+        stub_shopify.to_return(
+          :status => 200,
+          :body => {
+            :data => { :products => { :edges => [] } },
+            :extensions => {
+              :search => [
+                {
+                  :warnings => [
+                    { :code => "invalid_field", :field => "metafields", :message => "Invalid search field for this query." },
+                    { :message => "Another warning." }
+                  ]
+                }
+              ]
+            }
+          }.to_json,
+          :headers => { "Content-Type" => "application/json" }
+        )
+
+        expect {
+          client(:raise_on_warnings => true).execute(products_with_warnings_query)
+        }.to raise_error(
+          described_class::WarningError,
+          /search metafields: Invalid search field for this query\.\nsearch: Another warning\./
+        )
+      end
+    end
+
+    context "given a response that does not contain warnings" do
+      before do
+        stub_shopify.to_return(
+          :status => 200,
+          :body => { :data => { :shop => { :id => "gid://shopify/Shop/123" } } }.to_json,
+          :headers => { "Content-Type" => "application/json" }
+        )
+      end
+
+      it "does not raise even when :raise_on_warnings is true" do
+        result = nil
+
+        expect {
+          result = client(:raise_on_warnings => true).execute("query { shop { id } }")
+        }.to_not raise_error
+
+        expect(result.dig("data", "shop", "id")).to eq "gid://shopify/Shop/123"
+      end
+    end
+
     context "given a response with a mix of exceptions, HTTP errors, and throttling" do
       before do
         @request = stub_shopify.

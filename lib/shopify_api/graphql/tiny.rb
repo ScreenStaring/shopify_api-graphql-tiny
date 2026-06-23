@@ -29,6 +29,7 @@ module ShopifyAPI
       end
 
       RateLimitError = Class.new(GraphQLError)
+      WarningError = Class.new(GraphQLError)
 
       class HTTPError < Error
         attr_reader :code
@@ -84,6 +85,7 @@ module ShopifyAPI
       # [:jitter (Boolean)] Exponential backoff jitter (random delay added to backoff). Defaults to +true+
       # [:multiplier (Float)] Exponential backoff multiplier. Defaults to +2.0+
       # [:debug (Boolean|IO)] Output the HTTP request/response to +STDERR+ or to its value if it's an +IO+. Defaults to +false+.
+      # [:raise_on_warnings (Boolean)] If +true+ raise a WarningError when the GraphQL response contains warnings. Defaults to +false+.
       #
       # === Errors
       #
@@ -96,6 +98,7 @@ module ShopifyAPI
 
         @domain = shopify_domain(shop)
         @options = options || {}
+        @raise_on_warnings = @options[:raise_on_warnings]
 
         @headers = DEFAULT_HEADERS.dup
         @headers[ACCESS_TOKEN_HEADER] = token
@@ -137,6 +140,8 @@ module ShopifyAPI
       #   rate-limited after the configured number of retry attempts
       # * A ShopifyAPI::GraphQL::Tiny::GraphQLError is raised if the response contains an +errors+ property that is
       #   not a rate-limit error
+      # * A ShopifyAPI::GraphQL::Tiny::WarningError is raised if the +:raise_on_warnings+ option is +true+ and the
+      #   response contains warnings
       #
       # === Returns
       #
@@ -221,12 +226,20 @@ module ShopifyAPI
         end
 
         json = parse_json(response.body)
-        return json unless json.include?("errors")
 
-        return make_request(query, variables) if handle_graphql_error(json)
+        if json.include?("errors")
+          return make_request(query, variables) if handle_graphql_error(json)
 
-        message = error_message(json["errors"])
-        raise GraphQLError.new("failed to execute query for #@domain: #{message}", json)
+          message = error_message(json["errors"])
+          raise GraphQLError.new("failed to execute query for #@domain: #{message}", json)
+        end
+
+        if @raise_on_warnings
+          warnings = find_warnings(json)
+          raise WarningError.new("query for #@domain returned warnings: #{warning_message(warnings)}", json) unless warnings.empty?
+        end
+
+        json
       end
 
       def post(query, variables = nil)
@@ -321,6 +334,34 @@ module ShopifyAPI
 
           message
         end.join(", ")
+      end
+
+      def find_warnings(data, prop = nil)
+        case data
+        when Hash
+          data.flat_map do |key, value|
+            if key == "warnings" && value.is_a?(Array)
+              value.map { |w| [prop, w] }
+            else
+              find_warnings(value, key)
+            end
+          end
+        when Array
+          data.flat_map { |value| find_warnings(value, prop) }
+        else
+          []
+        end
+      end
+
+      def warning_message(warnings)
+        warnings.map do |prop, warning|
+          next warning.to_s unless warning.is_a?(Hash)
+
+          field = Array(warning["field"]).join(".")
+          parts = [prop]
+          parts << field unless field.empty?
+          "#{parts.join(" ")}: #{warning["message"]}"
+        end.join("\n")
       end
 
       def request_attempts_remain?
