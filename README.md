@@ -311,7 +311,6 @@ bundle exec rake rate_limit SHOPIFY_DOMAIN=your-domain SHOPIFY_TOKEN=your-token
 
 - [`ShopifyAPI::GraphQL::Request`](https://github.com/ScreenStaring/shopify_api-graphql-request) - A higher-level wrapper around this class with improved exception handling and `:snake_case` hash key conversion
 - [Shopify Dev Tools](https://github.com/ScreenStaring/shopify-dev-tools) - Command-line program to assist with the development and/or maintenance of Shopify apps and stores
-- [Shopify ID Export](https://github.com/ScreenStaring/shopify_id_export/) - Dump Shopify product and variant IDs —along with other identifiers— to a CSV or JSON file
 - [`TinyGID`](https://github.com/sshaw/tiny_gid/) - Build Global ID (gid://) URI strings from scalar values
 
 ## License
@@ -320,4 +319,4 @@ The gem is available as open source under the terms of the [MIT License](https:/
 
 ---
 
-Made by [ScreenStaring](http://screenstaring.com)
+Made by [ScreenStaring](https://screenstaring.com)
