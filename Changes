@@ -1,3 +1,7 @@
+2026-06-23  v1.0.2
+--------------------
+* Add :raise_on_warnings option to raise a WarningError when a response contains warnings
+
 2026-01-24  v1.0.1
 --------------------
 * Add support for calling #paginate without a block
