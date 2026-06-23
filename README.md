@@ -137,23 +137,6 @@ To disable retries set the `:retry` option to `false`:
 gql = ShopifyAPI::GraphQL::Tiny.new(shop, token, :retry => false)
 ```
 
-### Raising on Warnings
-
-A successful GraphQL response can still contain warnings (for example an invalid search field reported under
-`extensions.search`). By default these are ignored. Set `:raise_on_warnings` to `true` to raise a `WarningError`
-(a subclass of `GraphQLError`) whenever the response contains warnings:
-
-```rb
-gql = ShopifyAPI::GraphQL::Tiny.new(shop, token, :raise_on_warnings => true)
-
-begin
-  gql.execute(query)
-rescue ShopifyAPI::GraphQL::Tiny::WarningError => e
-  warn e.message    # The warnings, formatted
-  e.response        # The full GraphQL response Hash
-end
-```
-
 ### Pagination
 
 In addition to built-in request retry `ShopifyAPI::GraphQL::Tiny` also builds in support for pagination.
@@ -282,6 +265,23 @@ pager.execute(query) { |page| }
 ```
 
 The `"data"` and `"pageInfo"` keys are automatically added if not provided.
+
+### Raising on Warnings
+
+A successful GraphQL response can still contain warnings (for example an invalid search field reported under
+`extensions.search`). By default these are ignored. Set `:raise_on_warnings` to `true` to raise a `WarningError`
+(a subclass of `GraphQLError`) whenever the response contains warnings:
+
+```rb
+gql = ShopifyAPI::GraphQL::Tiny.new(shop, token, :raise_on_warnings => true)
+
+begin
+  gql.execute(query)
+rescue ShopifyAPI::GraphQL::Tiny::WarningError => e
+  warn e.message    # The warnings, formatted
+  e.response        # The full GraphQL response Hash
+end
+```
 
 ## Why Use This Instead of Shopify's API Client?
 
