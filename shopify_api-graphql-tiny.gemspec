@@ -9,7 +9,7 @@ Gem::Specification.new do |spec|
   spec.authors       = ["Skye Shaw"]
   spec.email         = ["skye.shaw@gmail.com"]
 
-  spec.summary       = %q{Lightweight, no-nonsense, Shopify GraphQL Admin API client with built-in pagination and retry}
+  spec.summary       = %q{Lightweight, no-nonsense, Shopify Admin & Storefront GraphQL API client with built-in pagination and retry}
   spec.homepage      = "https://github.com/ScreenStaring/shopify_api-graphql-tiny"
   spec.license       = "MIT"
 

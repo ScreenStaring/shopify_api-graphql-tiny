@@ -2,7 +2,7 @@ require "json"
 
 RSpec.describe ShopifyAPI::GraphQL::Tiny do
   def client(options = {})
-    described_class.new(ENV.fetch("SHOPIFY_DOMAIN"), ENV.fetch("SHOPIFY_TOKEN"), options)
+    described_class.new(ENV.fetch("SHOPIFY_DOMAIN"), ENV.fetch("SHOPIFY_ADMIN_TOKEN"), options)
   end
 
   def stub_shopify
@@ -45,6 +45,85 @@ RSpec.describe ShopifyAPI::GraphQL::Tiny do
     expect {
       described_class.new("foo", nil)
     }.to raise_error(ArgumentError, "token required")
+  end
+
+  describe "given :storefront => true" do
+    before do
+      @client = described_class.new(
+        ENV.fetch("SHOPIFY_DOMAIN"),
+        ENV.fetch("SHOPIFY_STOREFRONT_TOKEN"),
+        :storefront => true
+      )
+    end
+
+
+    it "makes requests against the Storefront API" do
+      # selectedOrFirstAvailableVariant only exists in the storefront API
+      result = @client.execute(<<-GQL, :id => "gid://shopify/Product/%s" % ENV.fetch("SHOPIFY_PRODUCT_ID"))["data"]
+        query($id: ID!) {
+          product(id: $id) {
+            selectedOrFirstAvailableVariant {
+              id
+            }
+          }
+        }
+      GQL
+
+      expect(result).to match(
+        "product" => {
+          "selectedOrFirstAvailableVariant" => {
+            "id" => %r(gid://shopify/ProductVariant/\d+)
+          }
+        }
+      )
+    end
+
+    it "sets the buyer IP header" do
+      client = described_class.new(
+        ENV.fetch("SHOPIFY_DOMAIN"),
+        ENV.fetch("SHOPIFY_STOREFRONT_TOKEN"),
+        :storefront => true,
+        :ip => "192.168.69.69"
+      )
+
+      stub_shopify.to_return(
+        :status => 200,
+        :body => '{"data":{}}',
+        :headers => { "Content-Type" => "application/json" }
+      )
+
+      # query does not matter, just stubbing for HTTP headers
+      client.execute("query { shop { id } }")
+      expect(WebMock).to have_requested(:post, %r{\.myshopify\.com}).with(:headers => {"X-Shopify-Storefront-Buyer-IP" => "192.168.69.69"})
+    end
+
+    describe "API version" do
+      it "defaults to the endpoint without an API version" do
+        stub_shopify.to_return(
+          :status => 200,
+          :body => '{"data":{}}',
+          :headers => { "Content-Type" => "application/json" }
+        )
+
+        @client.execute("query { shop { id } }")
+
+        endpoint = "https://%s/api/graphql.json" % ENV["SHOPIFY_DOMAIN"]
+        expect(WebMock).to have_requested(:post, endpoint)
+      end
+
+      it "sets the endpoint for the given API version" do
+        stub_shopify.to_return(
+          :status => 200,
+          :body => '{"data":{}}',
+          :headers => { "Content-Type" => "application/json" }
+        )
+
+        client(:version => "2026-04", :storefront => true).execute("query { shop { id } }")
+
+        endpoint = "https://%s/api/2026-04/graphql.json" % ENV["SHOPIFY_DOMAIN"]
+        expect(WebMock).to have_requested(:post, endpoint)
+      end
+    end
   end
 
   describe "API version" do

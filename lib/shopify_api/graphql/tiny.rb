@@ -8,7 +8,7 @@ require "shopify_api/graphql/tiny/version"
 module ShopifyAPI
   module GraphQL
     ##
-    # Lightweight, no-nonsense, Shopify GraphQL Admin API client with built-in pagination and retry
+    # Lightweight, no-nonsense, Shopify GraphQL Admin/Storefront API client with built-in pagination and retry
     #
     class Tiny
       Error = Class.new(StandardError)
@@ -45,6 +45,8 @@ module ShopifyAPI
       SHOPIFY_DOMAIN = ".myshopify.com"
 
       ACCESS_TOKEN_HEADER = "X-Shopify-Access-Token"
+      STOREFRONT_ACCESS_TOKEN_HEADER = "X-Shopify-Storefront-Access-Token"
+      STOREFRONT_BUYER_IP_HEADER = "X-Shopify-Storefront-Buyer-IP"
       QUERY_COST_HEADER = "X-GraphQL-Cost-Include-Fields"
 
       DEFAULT_HEADERS = { "Content-Type" => "application/json" }.freeze
@@ -64,7 +66,7 @@ module ShopifyAPI
         *NetHttpTimeoutErrors.all
       ]
 
-      ENDPOINT = "https://%s/admin/api%s/graphql.json"       # Note that we omit the "/" after API for the case where there's no version.
+      ENDPOINT = "https://%s%s/api%s/graphql.json"       # We omit the "/" after API for the case where there's no version
 
       ##
       #
@@ -73,13 +75,15 @@ module ShopifyAPI
       # === Arguments
       #
       # [shop (String)] Shopify domain to make requests against
-      # [token (String)] Shopify Admin API GraphQL token
+      # [token (String)] Shopify Admin API or Storefront Access Token, depending on options
       # [options (Hash)] Client options. Optional.
       #
       # === Options
       #
       # [:retry (Boolean|Array)] If +false+ disable retries or an +Array+ of errors to retry. Can be HTTP status codes, GraphQL errors, or exception classes.
       # [:version (String)] Shopify API version to use. Defaults to the latest version.
+      # [:storefront (Boolean)] If +true+ use the Storefront API instead of Admin API. Defaults to +false+.
+      # [:ip (String)] Optional buyer IP address for Storefront API (sets X-Shopify-Storefront-Buyer-IP header). Only used when :storefront is +true+.
       # [:max_attempts (Integer)] Maximum number of retry attempts across all errors. Defaults to +10+
       # [:base_delay (Float)] Exponential backoff base delay. Defaults to +0.5+
       # [:jitter (Boolean)] Exponential backoff jitter (random delay added to backoff). Defaults to +true+
@@ -98,13 +102,23 @@ module ShopifyAPI
 
         @domain = shopify_domain(shop)
         @options = options || {}
+
         @raise_on_warnings = @options[:raise_on_warnings]
+        @storefront = !!@options[:storefront]
 
         @headers = DEFAULT_HEADERS.dup
-        @headers[ACCESS_TOKEN_HEADER] = token
+
+        if @storefront
+          @headers[STOREFRONT_ACCESS_TOKEN_HEADER] = token
+          @headers[STOREFRONT_BUYER_IP_HEADER] = @options[:ip] if @options[:ip]
+        else
+          @headers[ACCESS_TOKEN_HEADER] = token
+        end
+
         @headers[QUERY_COST_HEADER] = "true" unless @options[:retry] == false
 
-        @endpoint = URI(sprintf(ENDPOINT, @domain, !@options[:version].to_s.strip.empty? ? "/#{@options[:version]}" : ""))
+        admin_path = @storefront ? "" : "/admin"
+        @endpoint = URI(sprintf(ENDPOINT, @domain, admin_path, !@options[:version].to_s.strip.empty? ? "/#{@options[:version]}" : ""))
         @backoff_options = DEFAULT_BACKOFF_OPTIONS.merge(@options.slice(*DEFAULT_BACKOFF_OPTIONS.keys))
 
         if @options[:debug]

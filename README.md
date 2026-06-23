@@ -1,6 +1,6 @@
 # ShopifyAPI::GraphQL::Tiny
 
-Lightweight, no-nonsense, Shopify GraphQL Admin API client with built-in pagination and retry
+Lightweight, no-nonsense, Shopify Admin & Storefront GraphQL API client with built-in pagination and retry
 
 [![CI](https://github.com/ScreenStaring/shopify_api-graphql-tiny/actions/workflows/ci.yml/badge.svg)](https://github.com/ScreenStaring/shopify_api-graphql-tiny/actions)
 
@@ -72,6 +72,24 @@ result = gql.execute(<<-GQL, :input => updates)
 GQL
 
 p result.dig("data", "customerUpdate", "userErrors")
+```
+
+### Storefront API
+
+By default requests are made against the Admin API.
+To make requests against the Storefront API use the `:storefront => true` option:
+
+```rb
+gql = ShopifyAPI::GraphQL::Tiny.new("my-shop", token, :storefront => true)
+result = gql.execute(<<-GQL, :id => your_gid)
+  query($id: ID!) {
+    product(id: $id) {
+      selectedOrFirstAvailableVariant {
+        id
+      }
+    }
+  }
+GQL
 ```
 
 ### Automatically Retrying Failed Requests
