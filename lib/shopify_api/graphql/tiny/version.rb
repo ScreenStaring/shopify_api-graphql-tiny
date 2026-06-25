@@ -3,7 +3,7 @@
 module ShopifyAPI
   module GraphQL
     class Tiny
-      VERSION = "1.0.2"
+      VERSION = "1.1.0"
     end
   end
 end

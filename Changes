@@ -1,3 +1,7 @@
+2026-06-25  v1.1.0
+--------------------
+* Add support for requests against the storefront API
+
 2026-06-23  v1.0.2
 --------------------
 * Add :raise_on_warnings option to raise a WarningError when a response contains warnings
