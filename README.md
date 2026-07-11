@@ -92,6 +92,12 @@ result = gql.execute(<<-GQL, :id => your_gid)
 GQL
 ```
 
+You can set the storefront buyer's IP address (`Shopify-Storefront-Buyer-IP` HTTP header) via the `:ip` option:
+
+```rb
+gql = ShopifyAPI::GraphQL::Tiny.new("my-shop", token, :storefront => true, :ip => request.remote_ip)
+```
+
 ### Automatically Retrying Failed Requests
 
 There are 2 types of retries: 1) request is rate-limited by Shopify 2) request fails due to an exception or non-200 HTTP response.
