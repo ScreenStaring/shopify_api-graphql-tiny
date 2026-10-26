@@ -9,7 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SHOPIFY_DOMAIN: "${{ secrets.SHOPIFY_DOMAIN }}"
-      SHOPIFY_TOKEN: "${{ secrets.SHOPIFY_TOKEN }}"
+      SHOPIFY_ADMIN_TOKEN: "${{ secrets.SHOPIFY_ADMIN_TOKEN }}"
+      SHOPIFY_STOREFRONT_TOKEN: "${{ secrets.SHOPIFY_STOREFRONT_TOKEN }}"
       SHOPIFY_CUSTOMER_ID: "${{ secrets.SHOPIFY_CUSTOMER_ID }}"
       SHOPIFY_PRODUCT_ID: "${{ secrets.SHOPIFY_PRODUCT_ID }}"
 
