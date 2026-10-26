@@ -84,6 +84,8 @@ module ShopifyAPI
       # [:version (String)] Shopify API version to use. Defaults to the latest version.
       # [:storefront (Boolean)] If +true+ use the Storefront API instead of Admin API. Defaults to +false+.
       # [:ip (String)] Optional buyer IP address for Storefront API (sets X-Shopify-Storefront-Buyer-IP header). Only used when :storefront is +true+.
+      # [:open_timeout (Numeric)] Number of seconds to wait for the connection to open. Defaults to Net::HTTP's default.
+      # [:read_timeout (Numeric)] Number of seconds to wait for a response. Defaults to Net::HTTP's default.
       # [:max_attempts (Integer)] Maximum number of retry attempts across all errors. Defaults to +10+
       # [:base_delay (Float)] Exponential backoff base delay. Defaults to +0.5+
       # [:jitter (Boolean)] Exponential backoff jitter (random delay added to backoff). Defaults to +true+
@@ -105,6 +107,8 @@ module ShopifyAPI
 
         @raise_on_warnings = @options[:raise_on_warnings]
         @storefront = !!@options[:storefront]
+        @open_timeout = @options[:open_timeout]
+        @read_timeout = @options[:read_timeout]
 
         @headers = DEFAULT_HEADERS.dup
 
@@ -270,6 +274,8 @@ module ShopifyAPI
 
         request = Net::HTTP.new(@endpoint.host, @endpoint.port)
         request.use_ssl = true
+        request.open_timeout = @open_timeout if @open_timeout
+        request.read_timeout = @read_timeout if @read_timeout
         request.set_debug_output(@debug) if @debug
 
         request.start { |http| http.request(post) }

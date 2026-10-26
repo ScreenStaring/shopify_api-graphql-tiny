@@ -9,6 +9,18 @@ RSpec.describe ShopifyAPI::GraphQL::Tiny do
     stub_request(:post, %r{\.myshopify\.com})
   end
 
+  def success_response
+    {
+      :status => 200,
+      :body => '{"data":{}}',
+      :headers => { "Content-Type" => "application/json" }
+    }
+  end
+
+  def stub_success_response
+    stub_shopify.to_return(success_response)
+  end
+
   def graphql_error(code)
     {
       :errors => [
@@ -86,11 +98,7 @@ RSpec.describe ShopifyAPI::GraphQL::Tiny do
         :ip => "192.168.69.69"
       )
 
-      stub_shopify.to_return(
-        :status => 200,
-        :body => '{"data":{}}',
-        :headers => { "Content-Type" => "application/json" }
-      )
+      stub_success_response
 
       # query does not matter, just stubbing for HTTP headers
       client.execute("query { shop { id } }")
@@ -99,11 +107,7 @@ RSpec.describe ShopifyAPI::GraphQL::Tiny do
 
     describe "API version" do
       it "defaults to the endpoint without an API version" do
-        stub_shopify.to_return(
-          :status => 200,
-          :body => '{"data":{}}',
-          :headers => { "Content-Type" => "application/json" }
-        )
+        stub_success_response
 
         @client.execute("query { shop { id } }")
 
@@ -112,11 +116,7 @@ RSpec.describe ShopifyAPI::GraphQL::Tiny do
       end
 
       it "sets the endpoint for the given API version" do
-        stub_shopify.to_return(
-          :status => 200,
-          :body => '{"data":{}}',
-          :headers => { "Content-Type" => "application/json" }
-        )
+        stub_success_response
 
         client(:version => "2026-04", :storefront => true).execute("query { shop { id } }")
 
@@ -552,6 +552,44 @@ RSpec.describe ShopifyAPI::GraphQL::Tiny do
       client.execute("query { shop { id } }")
 
       expect(WebMock).to have_requested(:post, %r{\.myshopify\.com}).with(:headers => {"X-GraphQL-Cost-Include-Fields" => "true"})
+    end
+
+    context "given :open_timeout and :read_timeout" do
+      # Collects the Net::HTTP instances created while executing the block
+      def captured_http
+        instances = []
+        allow(Net::HTTP).to receive(:new).and_wrap_original { |original, *args| original.call(*args).tap { |http| instances << http } }
+        yield
+        instances
+      end
+
+      it "sets the timeouts on the initial request" do
+        stub_success_response
+
+        instances = captured_http { client(:open_timeout => 3, :read_timeout => 7).execute("query { shop { id } }") }
+
+        expect(instances.map { |http| [http.open_timeout, http.read_timeout] }).to eq [[3, 7]]
+      end
+
+      it "sets the timeouts on retries" do
+        stub_shopify.
+          to_return(:status => 500, :body => "Internal Server Error").
+          to_return(success_response)
+
+        instances = captured_http {
+          client(:open_timeout => 3, :read_timeout => 7, :jitter => false, :max_attempts => 2).execute("query { shop { id } }")
+        }
+
+        expect(instances.map { |http| [http.open_timeout, http.read_timeout] }).to eq [[3, 7], [3, 7]]
+      end
+
+      it "uses Net::HTTP's defaults when not given" do
+        stub_success_response
+
+        instances = captured_http { client.execute("query { shop { id } }") }
+
+        expect(instances.map { |http| [http.open_timeout, http.read_timeout] }).to eq [[60, 60]]
+      end
     end
   end
 

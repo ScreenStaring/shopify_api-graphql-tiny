@@ -98,6 +98,16 @@ You can set the storefront buyer's IP address (`Shopify-Storefront-Buyer-IP` HTT
 gql = ShopifyAPI::GraphQL::Tiny.new("my-shop", token, :storefront => true, :ip => request.remote_ip)
 ```
 
+### Timeouts
+
+Use the `:open_timeout` and `:read_timeout` options. They apply to the initial request and any retries:
+
+```rb
+gql = ShopifyAPI::GraphQL::Tiny.new("my-shop", token, :open_timeout => 5, :read_timeout => 15)
+```
+
+Both default to `Net::HTTP`'s defaults.
+
 ### Automatically Retrying Failed Requests
 
 There are 2 types of retries: 1) request is rate-limited by Shopify 2) request fails due to an exception or non-200 HTTP response.
