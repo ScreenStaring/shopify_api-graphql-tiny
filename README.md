@@ -98,16 +98,6 @@ You can set the storefront buyer's IP address (`Shopify-Storefront-Buyer-IP` HTT
 gql = ShopifyAPI::GraphQL::Tiny.new("my-shop", token, :storefront => true, :ip => request.remote_ip)
 ```
 
-### Timeouts
-
-Use the `:open_timeout` and `:read_timeout` options. They apply to the initial request and any retries:
-
-```rb
-gql = ShopifyAPI::GraphQL::Tiny.new("my-shop", token, :open_timeout => 5, :read_timeout => 15)
-```
-
-Both default to `Net::HTTP`'s defaults.
-
 ### Automatically Retrying Failed Requests
 
 There are 2 types of retries: 1) request is rate-limited by Shopify 2) request fails due to an exception or non-200 HTTP response.
@@ -162,6 +152,24 @@ These can be overridden globally (by assigning to the constant) or per instance:
 # Only retry on 2 errors
 gql = ShopifyAPI::GraphQL::Tiny.new(shop, token, :retry => [SystemCallError, "500"])
 ```
+
+Also see [Token Expiry](#token-expiry).
+
+### Token Expiry
+
+`ShopifyAPI::GraphQL::Tiny` does not handle refreshing expired or expiring tokens. Remember, it's tiny!
+To handle token refresh and migration use [`ShopifyAPI::GraphQL::Request`](https://github.com/ScreenStaring/shopify_api-graphql-request)
+which is a higher-level wrapper around this class.
+
+### Timeouts
+
+Use the `:open_timeout` and `:read_timeout` options. They apply to the initial request and any retries:
+
+```rb
+gql = ShopifyAPI::GraphQL::Tiny.new("my-shop", token, :open_timeout => 5, :read_timeout => 15)
+```
+
+Both default to `Net::HTTP`'s defaults.
 
 #### Disabling Automatic Retry
 
