@@ -209,6 +209,18 @@ results = pager.execute(query, :foo => 123)
 results.each { |page| ... }
 ```
 
+`pager` contains a `#cursor` method that returns the GraphQL pagination cursor's current value. It is updated after each iteration:
+```rb
+results = pager.execute(query, :foo => 123)
+results.each do |page|
+  puts "Cursor: #{pager.cursor}"
+end
+
+pager.execute(query, :foo => 123).each do |page|
+  puts "Cursor: #{pager.cursor}"
+end
+```
+
 #### `after` Pagination
 
 To use `after` pagination, i.e., to paginate forward, your query must:
