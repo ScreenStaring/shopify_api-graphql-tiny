@@ -411,7 +411,7 @@ module ShopifyAPI
           raise ArgumentError, "query does not contain the pagination variable '#{@options[:variable]}'"
         end
 
-        variables ||= {}
+        variables = (variables || {}).dup
         pagination_finder = @options[@options[:direction]]
 
         enumerator = Enumerator.new do |y|
