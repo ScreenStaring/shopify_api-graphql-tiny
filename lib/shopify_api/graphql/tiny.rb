@@ -401,6 +401,8 @@ module ShopifyAPI
         :after  => %w[hasNextPage endCursor].freeze
       }.freeze
 
+      attr_reader :cursor
+
       def initialize(gql, *options)
         @gql = gql
         @options = normalize_options(options)
@@ -412,6 +414,7 @@ module ShopifyAPI
         end
 
         variables = (variables || {}).dup
+        @cursor = variables[@options[:variable]] || variables[@options[:variable].to_sym]
         pagination_finder = @options[@options[:direction]]
 
         enumerator = Enumerator.new do |y|
@@ -419,10 +422,10 @@ module ShopifyAPI
             page = @gql.execute(q, variables)
             y << page
 
-            cursor = pagination_finder[page]
-            break unless cursor
+            @cursor = pagination_finder[page]
+            break unless @cursor
 
-            variables[@options[:variable]] = cursor
+            variables[@options[:variable]] = @cursor
           end
         end
 

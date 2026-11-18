@@ -696,6 +696,60 @@ RSpec.describe ShopifyAPI::GraphQL::Tiny do
       expect(positions).to eq positions.sort
     end
 
+    it "tracks the current cursor after each iteration" do
+      q = <<-GQL
+        query product($id: ID! $after: String) {
+          product(id: $id) {
+            variants(first:1 sortKey: POSITION after: $after ) {
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
+              edges {
+                node {
+                  position
+                }
+              }
+            }
+          }
+        }
+      GQL
+
+      pager = client.paginate
+      cursors = []
+      pager.execute(q, :id => @id) { |_page| cursors << pager.cursor }
+
+      expect(cursors.size).to be > 1, VARIANT_COUNT_ERROR
+      expect(cursors.uniq.size).to eq cursors.size
+    end
+
+    it "tracks the current cursor after each iteration with a lazy enumerator" do
+      q = <<-GQL
+        query product($id: ID! $after: String) {
+          product(id: $id) {
+            variants(first:1 sortKey: POSITION after: $after ) {
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
+              edges {
+                node {
+                  position
+                }
+              }
+            }
+          }
+        }
+      GQL
+
+      pager = client.paginate
+      cursors = []
+      pager.execute(q, :id => @id).each { |_page| cursors << pager.cursor }
+
+      expect(cursors.size).to be > 1, VARIANT_COUNT_ERROR
+      expect(cursors.uniq.size).to eq cursors.size
+    end
+
     it "pages backward using a $before variable when :before pagination is specified" do
       q = <<-GQL
         query product($id: ID!) {
